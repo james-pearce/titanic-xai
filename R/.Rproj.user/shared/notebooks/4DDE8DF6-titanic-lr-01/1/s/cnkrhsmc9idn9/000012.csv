@@ -1,0 +1,1 @@
+"0","effect_plot(model=glm_01, pred=Embarked, interval=TRUE, outcome.scale=""link"")"

@@ -1,0 +1,3 @@
+"0","titanic_predictors <- c('Pclass', 'Sex', 'age_band', 'SibSp', 'Parch',  "
+"0","    'Fare', 'Cabin', 'Embarked')"
+"0","titanic_df[titanic_max, titanic_predictors]"

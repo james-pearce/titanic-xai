@@ -1,0 +1,258 @@
+---
+title: "Titanic analysis"
+output:
+  html_document: 
+    keep_md: yes
+---
+
+Here we are going to fit a classical logistic regression to the Kaggle 
+[_Titanic_ data set](https://www.kaggle.com/hesh97/titanicdataset-traincsv).
+
+```{r libs}
+lib_vec <- c('readr', 'magrittr', 'ggplot2', 'dplyr', 'jtools')
+for (lib in lib_vec){
+  library(lib, character.only=TRUE)
+}
+```
+
+Read in the _Titanic_ data set which I have already downloaded to a local 
+location in CSV format.
+
+```{r}
+titanic_filename <- "titanic-train.csv"
+data_path = "~/repos/titanic/data"
+titanic_df <- read_csv(file.path(data_path, titanic_filename), 
+                       col_types="iffcfnincncc") %>%
+  mutate(age_band = factor(case_when(
+    Age < 18 ~ " 1. Under 18",
+    Age < 25 ~ " 2. 18 to 24",
+    Age < 35 ~ " 3. 25 to 34",
+    Age < 45 ~ " 4. 35 to 44",
+    Age < 55 ~ " 5. 45 to 54",
+    Age < 65 ~ " 6. 55 to 64",
+    Age >= 65 ~ " 7. 65 and over",
+    TRUE ~ " 8. Other")),
+    SibSp = factor(
+      case_when(
+        SibSp >= 2 ~ "2+",
+        TRUE ~ as.character(SibSp)
+      )
+    ),
+    Parch = factor(
+      case_when(
+        Parch >= 2 ~ "2+",
+        TRUE ~ as.character(Parch)
+      )
+    ), # placeholder
+    Cabin = substring(Cabin, 1, 1),
+    Cabin = factor(case_when(
+      Cabin %in% c('G', 'T') ~ "G/T",
+      is.na(Cabin) ~ "Not given",
+      TRUE ~ Cabin
+    )),
+    Fare = factor(case_when(
+      Fare <= 10  ~ " 1. (  0,  10]",
+      Fare <= 20  ~ " 2. ( 10,  20]",
+      Fare <= 30  ~ " 3. ( 20,  30]",
+      Fare <= 40  ~ " 4. ( 30,  40]",
+      TRUE  ~ " 5. ( 40,    ]",
+   )),
+   Embarked = factor(
+     case_when(
+       is.na(Embarked) ~ 'S',
+       TRUE ~ Embarked
+     )
+   )
+    )
+titanic_df %>% head(20)
+```
+Now we are going to examine some of this data. The thing we are trying to 
+predict--the _target_--is `Survived`; that is, whether the passenger survived
+(`1`) or did not (`0`).
+
+```{r}
+ggplot(data=titanic_df, aes(x=Survived)) + geom_bar()
+```
+`SibSp` is the number of siblings or spouse on board.
+
+```{r}
+ggplot(data=titanic_df, aes(x=ordered(SibSp))) + geom_bar()
+```
+
+`Pclass` is the passenger class.
+
+```{r}
+ggplot(data=titanic_df, aes(x=ordered(Pclass))) + geom_bar()
+```
+
+`Parch` is the number of parents/children onboard the _Titanic_.
+```{r}
+ggplot(data=titanic_df, aes(x=ordered(Parch))) + geom_bar()
+```
+Let's visualise `Fare`.
+```{r}
+ggplot(data=titanic_df, aes(x=Fare)) + geom_bar()
+```
+
+## Fit a GLM
+
+```{r}
+glm_01 <- glm(Survived ~ Pclass + Sex + age_band + SibSp + Parch + Fare + Cabin + Embarked,
+              data=titanic_df, family=binomial)
+anova(glm_01, test='Chisq')
+```
+```{r}
+summary(glm_01)
+```
+The large effects are on the variables `Sex`, `age_band`, `Cabin` and `Embarked`.
+We will also examine `Fare` since there seems to be some signal there.
+```{r}
+effect_plot(model=glm_01, pred=Sex, interval=TRUE, outcome.scale="link")
+effect_plot(model=glm_01, pred=age_band, interval=TRUE, outcome.scale="link")
+effect_plot(model=glm_01, pred=Cabin, interval=TRUE, outcome.scale="link")
+effect_plot(model=glm_01, pred=Embarked, interval=TRUE, outcome.scale="link")
+effect_plot(model=glm_01, pred=Fare, interval=TRUE, outcome.scale="link")
+
+
+```
+We have a broad idea of the factors involved that improved passengers' 
+chances of survival on the ill-fated voyage. Let's look now at a couple of 
+observations: one each of a strong prediction for survival and a strong 
+prediction of the opposite of survival.
+
+```{r}
+preds_01 <- predict.glm(glm_01, newdata=titanic_df)
+preds_01 %>% max
+titanic_max <- preds_01 %>% which.max
+titanic_min <- preds_01 %>% which.min
+
+```
+First look at the maximum.
+```{r}
+titanic_predictors <- c('Pclass', 'Sex', 'age_band', 'SibSp', 'Parch',  
+    'Fare', 'Cabin', 'Embarked')
+titanic_df[titanic_max, titanic_predictors]
+glm_01 %>% coef
+```
+
+```{r}
+0.10831603 + 
+  1.39380902 + # Pclass 1
+  2.73556786 + # Sex female
+  0 + # age_band 1. Under 18
+  0 + # SibSp 0
+  0.17985123 + # Parch 1
+  0.34597961 + # Fare 40+
+  0.06157172 + # Cabin B
+  0  # Embarked C
+preds_max <- preds_01 %>% max
+preds_max
+1/(1 + exp(-preds_max))
+```
+
+
+```{r}
+titanic_predictors <- c('Pclass', 'Sex', 'age_band', 'SibSp', 'Parch',  
+    'Fare', 'Cabin', 'Embarked')
+titanic_df[titanic_min, titanic_predictors]
+glm_01 %>% coef
+```
+
+
+```{r}
+0.10831603 + 
+  0 + # Pclass 3
+  0 + # Sex male
+  -3.35951828 + # age_band 7. 65 and over
+  0 + # SibSp 0
+  0 + # Parch 0
+   + # 1. (0, 10]
+  -0.84485644 + # Cabin Not given
+  -0.47636764  # Embarked S
+pred_min <- preds_01 %>% min
+pred_min
+1/(1 + exp(-pred_min))
+```
+### Confusion matrix
+
+```{r}
+preds <- predict.glm(glm_01, newdata=titanic_df, type='response')
+preds %>% head()
+thresh <- 0.5
+titanic_df$Predict_survived <- ifelse(preds > thresh, 1, 0)
+```
+```{r}
+table(titanic_df$Predict_survived, titanic_df$Survived, dnn=list('Predicted', 'Actual'))
+```
+
+
+## Kaggle submission
+
+As this is a Kaggle data set, we can
+
+1. make predictions against the test set
+2. submit the test set to Kaggle to see how well our model performs
+
+Read in the data.
+```{r}
+test_filename <- "test.csv"
+data_path = "~/repos/titanic/data"
+test_df <- read_csv(file.path(data_path, test_filename), 
+                       col_types="ifcfnincncc") %>%
+  mutate(age_band = factor(case_when(
+    Age < 18 ~ " 1. Under 18",
+    Age < 25 ~ " 2. 18 to 24",
+    Age < 35 ~ " 3. 25 to 34",
+    Age < 45 ~ " 4. 35 to 44",
+    Age < 55 ~ " 5. 45 to 54",
+    Age < 65 ~ " 6. 55 to 64",
+    Age >= 65 ~ " 7. 65 and over",
+    TRUE ~ " 8. Other")),
+    SibSp = factor(
+      case_when(
+        SibSp >= 2 ~ "2+",
+        TRUE ~ as.character(SibSp)
+      )
+    ),
+    Parch = factor(
+      case_when(
+        Parch >= 2 ~ "2+",
+        TRUE ~ as.character(Parch)
+      )
+    ), # placeholder
+    Cabin = substring(Cabin, 1, 1),
+    Cabin = factor(case_when(
+      Cabin %in% c('G', 'T') ~ "G/T",
+      is.na(Cabin) ~ "Not given",
+      TRUE ~ Cabin
+    )),
+    Fare = factor(case_when(
+      Fare <= 10  ~ " 1. (  0,  10]",
+      Fare <= 20  ~ " 2. ( 10,  20]",
+      Fare <= 30  ~ " 3. ( 20,  30]",
+      Fare <= 40  ~ " 4. ( 30,  40]",
+      TRUE  ~ " 5. ( 40,    ]",
+   )),
+   Embarked = factor(
+     case_when(
+       is.na(Embarked) ~ 'S',
+       TRUE ~ Embarked
+     )
+   )
+    )
+test_df %>% head(20)
+```
+Use the GLM to predict survival.
+```{r}
+test_preds <- predict.glm(glm_01, newdata=test_df, type='response')
+test_preds %>% head()
+thresh <- 0.5
+test_df$Survived = ifelse(test_preds > thresh, 1, 0)
+```
+
+```{r}
+outfilename <- "submission_lr.csv"
+write.csv(test_df[c("PassengerId", "Survived")], file.path(data_path, outfilename), 
+          row.names=FALSE, quote=FALSE)
+```
+

@@ -1,0 +1,18 @@
+"0","lib_vec <- c('readr', 'magrittr', 'ggplot2', 'dplyr', 'jtools')"
+"0","for (lib in lib_vec){"
+"0","  library(lib, character.only=TRUE)"
+"0","}"
+"2","
+Attaching package: ‘dplyr’
+
+"
+"2","The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+"
+"2","The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+"
